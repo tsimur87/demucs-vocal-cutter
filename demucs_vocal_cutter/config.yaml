@@ -1,0 +1,26 @@
+temp_dir: temp_demucs
+output_dir: Outputs
+input_dir: Inputs
+default_model: htdemucs_ft
+default_quality: best
+supported_platforms:
+  youtube:
+    - youtube.com
+    - youtu.be
+  tiktok:
+    - tiktok.com
+  instagram:
+    - instagram.com
+  facebook:
+    - facebook.com
+    - fb.com
+    - fb.watch
+  twitter:
+    - twitter.com
+    - x.com
+  vimeo:
+    - vimeo.com
+  reddit:
+    - reddit.com
+  soundcloud:
+    - soundcloud.com

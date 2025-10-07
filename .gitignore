@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+venv/
+temp_demucs/
+Inputs/
+Outputs/
+errors.log
+*.mp3
+*.wav
+*.mp4
+*.m4a
+*.webm

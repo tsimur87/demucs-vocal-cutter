@@ -1,0 +1,9 @@
+demucs
+yt-dlp
+pytube
+ffmpeg-python
+scipy
+torch
+torchaudio
+tqdm
+pyyaml  # для конфига

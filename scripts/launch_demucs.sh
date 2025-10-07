@@ -1,81 +1,85 @@
 #!/bin/bash
 
-# Change to the script's directory
+# Переход в корневую директорию проекта
 cd "$(dirname "$0")/.."
 
-echo "Starting Demucs Vocal Cutter..."
+echo "Запуск Demucs Vocal Cutter..."
 
-# Check if Python3 is available
-if ! command -v python3 &> /dev/null; then
-    echo "Error: Python3 is not installed or not in PATH."
-    echo "Please install Python3 and try again."
-    read -p "Press Enter to close this window..."
+# Определение директории виртуальной среды
+VENV_DIR="./venv"
+PYTHON="$VENV_DIR/bin/python3"
+
+# Проверка наличия виртуальной среды
+if [ ! -d "$VENV_DIR" ]; then
+    echo "Создание виртуальной среды..."
+    python3 -m venv "$VENV_DIR"
+fi
+
+# Проверка, что Python в виртуальной среде существует
+echo "Проверка виртуальной среды..."
+if [ ! -f "$PYTHON" ]; then
+    echo "Виртуальная среда не найдена или повреждена. Пожалуйста, пересоздайте её."
     exit 1
 fi
 
-# Remove existing virtual environment if it's corrupted
-if [ -d "venv" ]; then
-    echo "Checking virtual environment..."
-    if [ ! -f "venv/bin/python3" ] && [ ! -f "venv/bin/python" ]; then
-        echo "Virtual environment appears corrupted. Removing and recreating..."
-        rm -rf venv
-    fi
+echo "Используется Python: $PYTHON"
+
+# Активация виртуальной среды
+source "$VENV_DIR/bin/activate"
+
+# Обновление pip
+echo "Обновление pip..."
+pip install --upgrade pip
+
+# Установка зависимостей
+echo "Установка зависимостей из requirements.txt..."
+if ! pip install -r requirements.txt; then
+    echo "Не удалось установить некоторые зависимости. Пробуем установить основные..."
+    pip install demucs ffmpeg-python yt-dlp pytube tqdm scipy
 fi
 
-# Create virtual environment if it doesn't exist
-if [ ! -d "venv" ]; then
-    echo "Creating virtual environment..."
-    python3 -m venv venv
-    if [ $? -ne 0 ]; then
-        echo "Failed to create virtual environment."
-        echo "Please make sure Python3 and venv module are properly installed."
-        read -p "Press Enter to close this window..."
-        exit 1
-    fi
+# Установка PyTorch, если не установлен
+echo "Установка PyTorch..."
+pip install torch==2.7.1 torchaudio==2.7.1 torchvision==0.22.1
+
+# Проверка наличия ffmpeg
+echo "Проверка ffmpeg..."
+if ! command -v ffmpeg >/dev/null 2>&1; then
+    echo "FFmpeg не найден. Установите его с помощью 'brew install ffmpeg'."
+    exit 1
 fi
 
-# Determine the correct Python executable path
-if [ -f "venv/bin/python3" ]; then
-    PYTHON_EXEC="venv/bin/python3"
-    PIP_EXEC="venv/bin/pip3"
-elif [ -f "venv/bin/python" ]; then
-    PYTHON_EXEC="venv/bin/python"
-    PIP_EXEC="venv/bin/pip"
+# Обработка аргументов
+URL=""
+MODEL="htdemucs"  # Модель по умолчанию
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --url) URL="$2"; shift ;;
+        --model) MODEL="$2"; shift ;;
+        *) echo "Неизвестный параметр: $1"; exit 1 ;;
+    esac
+    shift
+done
+
+# Проверка доступных моделей
+VALID_MODELS=("htdemucs" "htdemucs_ft" "htdemucs_6s")
+if [[ ! " ${VALID_MODELS[@]} " =~ " ${MODEL} " ]]; then
+    echo "Доступные модели Demucs:"
+    echo "1. htdemucs (быстрее, стандартное качество)"
+    echo "2. htdemucs_ft (медленнее, лучшее качество)"
+    echo "3. htdemucs_6s (6 источников, высокое качество, медленнее)"
+    read -p "Выберите модель (1-3, по умолчанию 1): " MODEL_CHOICE
+    case $MODEL_CHOICE in
+        2) MODEL="htdemucs_ft" ;;
+        3) MODEL="htdemucs_6s" ;;
+        *) MODEL="htdemucs" ;;
+    esac
+fi
+
+# Запуск основного скрипта
+echo "Запуск Demucs Vocal Cutter с моделью: $MODEL"
+if [ -n "$URL" ]; then
+    "$PYTHON" -m demucs_vocal_cutter.main --url "$URL" --model "$MODEL"
 else
-    echo "Error: Could not find Python executable in virtual environment."
-    read -p "Press Enter to close this window..."
-    exit 1
+    "$PYTHON" -m demucs_vocal_cutter.main --model "$MODEL"
 fi
-
-echo "Using Python: $PYTHON_EXEC"
-
-# Upgrade pip
-echo "Upgrading pip..."
-$PYTHON_EXEC -m pip install --upgrade pip
-
-# Install dependencies
-echo "Installing dependencies from requirements.txt..."
-$PIP_EXEC install -r requirements.txt
-
-if [ $? -ne 0 ]; then
-    echo "Failed to install some dependencies. Trying core dependencies..."
-    $PIP_EXEC install demucs ffmpeg-python yt-dlp pytube tqdm scipy
-    # Try PyTorch separately
-    echo "Installing PyTorch..."
-    $PIP_EXEC install torch==2.7.1 torchaudio==2.7.1 torchvision==0.22.1
-fi
-
-# Check for ffmpeg
-echo "Checking for ffmpeg..."
-if ! command -v ffmpeg &> /dev/null; then
-    echo "Warning: ffmpeg not found in system PATH."
-    echo "You may need to install ffmpeg: https://ffmpeg.org/download.html"
-fi
-
-# Run the script
-echo "Launching Demucs Vocal Cutter..."
-echo "================================================"
-$PYTHON_EXEC -m demucs_vocal_cutter.main
-echo "================================================"
-echo "Process completed."
-read -p "Press Enter to close this window..."

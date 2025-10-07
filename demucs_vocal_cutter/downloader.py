@@ -3,6 +3,7 @@ import subprocess
 import re
 import threading
 import shutil
+import logging
 
 try:
     from pytube import YouTube
@@ -10,9 +11,9 @@ try:
 except ImportError:
     pytube_available = False
 
-from demucs_vocal_cutter import config  # Импорт конфига, если нужно
+from demucs_vocal_cutter import config
 
-SUPPORTED_PLATFORMS = config.load_config()['supported_platforms']  # Используем из config.yaml
+SUPPORTED_PLATFORMS = config['supported_platforms']
 
 def detect_platform(url):
     """Detect which platform the URL is from"""
@@ -24,7 +25,6 @@ def detect_platform(url):
 def get_available_video_qualities(url, platform="youtube"):
     """Get available video qualities for the given URL"""
     try:
-        # Логика из исходного кода
         if platform == "youtube":
             try:
                 subprocess.run(["yt-dlp", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
@@ -68,49 +68,55 @@ def get_available_video_qualities(url, platform="youtube"):
                         return formats
                     except Exception:
                         pass
-        # Для других платформ - аналогично исходному
         return [
             {'id': 'best', 'resolution': 'best', 'description': 'Best quality'},
             {'id': '720p', 'resolution': '720p', 'description': 'HD (720p)'},
             {'id': '480p', 'resolution': '480p', 'description': 'SD (480p)'},
             {'id': '360p', 'resolution': '360p', 'description': 'Low (360p)'}
         ]
-    except Exception:
+    except Exception as e:
+        logging.error(f"Failed to get video qualities: {str(e)}")
         return [{'id': 'best', 'resolution': 'best', 'description': 'Best quality'}]
 
 def download_audio(video_url, temp_dir, platform="youtube"):
     """Download just the audio from various platforms using yt-dlp"""
-    # Полная логика из исходного кода download_audio
     try:
         subprocess.run(["yt-dlp", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-        yt_dlp_available = True
-    except:
-        yt_dlp_available = False
-    if yt_dlp_available:
         audio_temp_path = os.path.join(temp_dir, "audio_orig.m4a")
         audio_cmd = ["yt-dlp", "--format", "bestaudio[ext=m4a]/bestaudio", "--output", audio_temp_path, "--no-playlist", video_url]
         subprocess.run(audio_cmd, check=True)
         if os.path.exists(audio_temp_path):
             return audio_temp_path
-        # Fallbacks из исходного
-    elif pytube_available and platform == "youtube":
-        # Логика pytube из исходного
-        pass
-    return None
+        return None
+    except Exception as e:
+        logging.error(f"Failed to download audio from {platform}: {str(e)}")
+        if pytube_available and platform == "youtube":
+            try:
+                yt = YouTube(video_url)
+                audio_stream = yt.streams.filter(only_audio=True).first()
+                audio_temp_path = os.path.join(temp_dir, "audio_orig.m4a")
+                audio_stream.download(output_path=temp_dir, filename="audio_orig.m4a")
+                return audio_temp_path
+            except Exception as e:
+                logging.error(f"Pytube fallback failed: {str(e)}")
+        return None
 
 def start_video_download(video_url, video_file, quality_id='best', platform="youtube"):
     """Start downloading the video in a background thread with selected quality"""
-    # Полная логика из исходного start_video_download, включая thread
     def download_video_ytdlp():
-        # Логика
-        pass
+        try:
+            # Use 'b' instead of 'best' to let yt-dlp choose the best available format
+            format_option = quality_id if quality_id != 'best' else 'b'
+            cmd = ["yt-dlp", "--format", format_option, "--output", video_file, "--no-playlist", video_url]
+            subprocess.run(cmd, check=True)
+        except Exception as e:
+            logging.error(f"Failed to download video from {platform}: {str(e)}")
     video_thread = threading.Thread(target=download_video_ytdlp)
     video_thread.start()
     return video_thread
 
 def get_video_title(url, platform="youtube"):
     """Get the title of the video from the URL"""
-    # Полная логика из исходного get_video_title
     try:
         cmd = ["yt-dlp", "--get-title", url]
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
@@ -118,9 +124,13 @@ def get_video_title(url, platform="youtube"):
         if title:
             title = re.sub(r'[<>:"/\\|?*]', '_', title)[:100]
             return title
-    except:
+    except Exception as e:
+        logging.error(f"Failed to get video title with yt-dlp: {str(e)}")
         if pytube_available and platform == "youtube":
-            yt = YouTube(url)
-            title = yt.title
-            return re.sub(r'[<>:"/\\|?*]', '_', title)[:100]
+            try:
+                yt = YouTube(url)
+                title = yt.title
+                return re.sub(r'[<>:"/\\|?*]', '_', title)[:100]
+            except Exception as e:
+                logging.error(f"Pytube title fetch failed: {str(e)}")
     return "output_vocals"

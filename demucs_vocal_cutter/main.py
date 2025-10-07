@@ -3,49 +3,43 @@ import sys
 import logging
 import threading
 import argparse
-import yaml
+from demucs_vocal_cutter import config
 from demucs_vocal_cutter.downloader import detect_platform, get_available_video_qualities, download_audio, start_video_download, get_video_title
 from demucs_vocal_cutter.audio_processor import convert_audio_to_wav, run_demucs, merge_audio_and_video
 from demucs_vocal_cutter.utils import check_dependencies, clean_directory
 
 stop_event = threading.Event()
 
-def load_config(config_path="demucs_vocal_cutter/config.yaml"):
-    with open(config_path, 'r') as file:
-        return yaml.safe_load(file)
-
 def parse_args():
-    parser = argparse.ArgumentParser(description="Extract vocals from video/audio")
-    parser.add_argument("--url", help="URL of the video")
-    parser.add_argument("--file", help="Path to local file")
-    parser.add_argument("--model", default=None, help="Demucs model (htdemucs or htdemucs_ft)")
-    parser.add_argument("--quality", default=None, help="Video quality")
+    parser = argparse.ArgumentParser(description="Извлечение вокала из видео/аудио")
+    parser.add_argument("--url", help="URL видео")
+    parser.add_argument("--file", help="Путь к локальному файлу")
+    parser.add_argument("--model", default="htdemucs", choices=["htdemucs", "htdemucs_ft", "htdemucs_6s"], help="Модель Demucs (htdemucs: быстрее, htdemucs_ft: лучшее качество, htdemucs_6s: 6 источников)")
+    parser.add_argument("--quality", default=None, help="Качество видео")
     return parser.parse_args()
 
 def main():
-    config = load_config()
     args = parse_args()
 
     print("""
     ╔════════════════════════════════════════════════╗
     ║  Enhanced Demucs Vocal Cutter                  ║
-    ║  Extract vocals from videos on multiple        ║
-    ║  platforms including YouTube, TikTok, and      ║
-    ║  Instagram with quality selection              ║
+    ║  Извлечение вокала из видео с YouTube, TikTok,║
+    ║  Instagram с выбором качества                  ║
     ╚════════════════════════════════════════════════╝
     """)
 
     missing = check_dependencies()
     if missing:
-        print("Warning: Missing dependencies:", ", ".join(missing))
-        if input("Proceed anyway? (y/n): ").strip().lower() != 'y':
-            sys.exit("Exiting due to missing dependencies.")
+        print("Предупреждение: Отсутствуют зависимости:", ", ".join(missing))
+        if input("Продолжить? (y/n): ").strip().lower() != 'y':
+            sys.exit("Выход из-за отсутствия зависимостей.")
 
-    video_path = args.url or args.file or input("Enter URL or 'local' for file from Inputs folder: ").strip()
+    video_path = args.url or args.file or input("Введите URL или 'local' для файла из папки Inputs: ").strip()
     platform = "local" if not video_path.startswith("http") else detect_platform(video_path)
-    print(f"Detected platform: {platform}")
+    print(f"Обнаружена платформа: {platform}")
 
-    model_name = args.model or config['default_model']
+    model_name = args.model
     quality_id = args.quality or config['default_quality']
 
     temp_dir = config['temp_dir']
@@ -73,50 +67,56 @@ def main():
             os.makedirs(input_dir, exist_ok=True)
             input_files = [f for f in os.listdir(input_dir) if f.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.mp3', '.wav'))]
             if not input_files:
-                sys.exit("No files found in Inputs folder.")
-            print("\nAvailable files:")
+                sys.exit("Файлы в папке Inputs не найдены.")
+            print("\nДоступные файлы:")
             for i, file in enumerate(input_files):
                 print(f"{i+1}. {file}")
-            choice = int(input("Select file number: ")) - 1
+            choice = int(input("Выберите номер файла: ")) - 1
             video_path = os.path.join(input_dir, input_files[choice])
 
         if video_path.startswith("http"):
             available_qualities = get_available_video_qualities(video_path, platform)
-            print("\nAvailable video qualities:")
+            print("\nДоступные качества видео:")
             for i, quality in enumerate(available_qualities):
                 print(f"{i+1}. {quality.get('resolution', 'Unknown')} - {quality.get('description', '')}")
             try:
-                quality_choice = int(input("\nSelect quality (number): "))
-                quality_id = available_qualities[quality_choice - 1]['id']
-            except:
-                print("Using default quality.")
+                quality_choice = int(input("\nВыберите качество (номер): ")) - 1
+                quality_id = available_qualities[quality_choice]['id']
+            except (ValueError, IndexError):
+                print("Неверный выбор, используется качество по умолчанию (лучшее).")
+                quality_id = 'best'
+
             audio_orig_path = download_audio(video_path, temp_dir, platform)
             if not audio_orig_path:
-                sys.exit("Failed to download audio.")
-            convert_audio_to_wav(audio_orig_path, audio_file)
+                sys.exit("Не удалось загрузить аудио.")
+            if not convert_audio_to_wav(audio_orig_path, audio_file):
+                sys.exit("Не удалось конвертировать аудио в WAV.")
             video_thread = start_video_download(video_path, video_file, quality_id, platform)
             downloaded_video = True
         else:
-            convert_audio_to_wav(video_path, audio_file)
+            if not convert_audio_to_wav(video_path, audio_file):
+                sys.exit("Не удалось конвертировать аудио в WAV.")
             shutil.copy2(video_path, video_file)
             downloaded_video = True
 
         vocals_path = run_demucs(audio_file, temp_dir, model_name)
         if not vocals_path:
-            sys.exit("Failed to separate vocals.")
+            sys.exit("Не удалось разделить вокал. Проверьте логи.")
 
         if video_thread and video_thread.is_alive():
-            print("Waiting for video download...")
+            print("Ожидание загрузки видео...")
             video_thread.join()
 
         if stop_event.is_set():
-            sys.exit("Process interrupted.")
+            sys.exit("Процесс прерван.")
 
         if not os.path.exists(video_file):
-            sys.exit("Video file not found.")
+            sys.exit("Видеофайл не найден. Загрузка могла не удаться.")
 
-        merge_audio_and_video(video_file, vocals_path, output_file)
-        print(f"Success! Output: {output_file}")
+        if not merge_audio_and_video(video_file, vocals_path, output_file):
+            sys.exit("Не удалось объединить аудио и видео.")
+
+        print(f"Успех! Результат: {output_file}")
 
     except KeyboardInterrupt:
         stop_event.set()
@@ -125,7 +125,7 @@ def main():
         sys.exit(1)
     except Exception as e:
         logging.exception(str(e))
-        print(f"Error: {str(e)}")
+        print(f"Ошибка: {str(e)}")
         sys.exit(1)
     finally:
         files_to_remove = [audio_file]

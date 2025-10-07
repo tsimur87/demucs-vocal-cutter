@@ -1,29 +1,49 @@
 import os
-import subprocess
 import logging
-import shutil
+import yt_dlp
 
-logging.basicConfig(filename="errors.log", level=logging.ERROR, format="%(asctime)s %(levelname)s: %(message)s")
+def get_platform_config(platform):
+    """Возвращает конфигурацию для yt-dlp в зависимости от платформы"""
+    base_config = {
+        'quiet': False,
+        'noprogress': False,
+        'format_sort': ['+res', '+vcodec:h264'],
+        'noplaylist': True,
+        'continuedl': True,
+    }
+    if platform == 'youtube':
+        return {**base_config, 'cookiefile': None}
+    elif platform == 'tiktok':
+        return {**base_config, 'extractor_args': {'tiktok': {'app_version': '28.2.2'}}}
+    elif platform == 'instagram':
+        return {**base_config, 'cookiefile': None}
+    return base_config
 
 def check_dependencies():
-    """Check if all required dependencies are installed"""
-    missing_deps = []
-    # Логика из исходного check_dependencies для ffmpeg, yt-dlp, pytube, demucs
-    try:
-        subprocess.run(["ffmpeg", "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-    except:
-        missing_deps.append("ffmpeg")
-    # ... остальные проверки
-    return missing_deps
+    """Проверка наличия необходимых зависимостей"""
+    dependencies = ['yt_dlp', 'ffmpeg', 'torch', 'torchaudio', 'scipy']
+    missing = []
+    for dep in dependencies:
+        try:
+            __import__(dep)
+        except ImportError:
+            missing.append(dep)
+    return missing
 
-def clean_directory(temp_dir, model_name=None, files_to_remove=None):
-    """Clean up temporary files"""
-    # Полная логика из исходного clean_directory
-    if files_to_remove:
-        for file_path in files_to_remove:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-    if model_name and os.path.isdir(os.path.join(temp_dir, model_name)):
-        shutil.rmtree(os.path.join(temp_dir, model_name))
-    if os.path.exists(temp_dir) and not os.listdir(temp_dir):
-        os.rmdir(temp_dir)
+def clean_directory(temp_dir, model_name, files_to_remove):
+    """Очистка временной директории, кроме папки модели"""
+    try:
+        model_dir = os.path.join(temp_dir, model_name)
+        for item in os.listdir(temp_dir):
+            item_path = os.path.join(temp_dir, item)
+            if item_path == model_dir or item_path in files_to_remove:
+                continue
+            if os.path.isfile(item_path):
+                os.remove(item_path)
+            elif os.path.isdir(item_path):
+                shutil.rmtree(item_path, ignore_errors=True)
+        for file in files_to_remove:
+            if os.path.exists(file):
+                os.remove(file)
+    except Exception as e:
+        logging.error(f"Ошибка очистки директории: {str(e)}")

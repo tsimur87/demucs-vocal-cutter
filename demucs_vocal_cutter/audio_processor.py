@@ -28,9 +28,9 @@ def convert_audio_to_wav(input_path, output_path):
             return False
 
 def run_demucs(audio_file, temp_dir, model_name):
-    """Запуск разделения Demucs с использованием MPS или CPU"""
+    """Запуск разделения Demucs с использованием MPS или CPU для извлечения только вокала"""
     try:
-        # Установка устройства (MPS для Apple Silicon, CUDA для NVIDIA, иначе CPU)
+        # Установка устройства
         device = "cpu"
         if torch.backends.mps.is_available() and torch.backends.mps.is_built():
             device = "mps"
@@ -46,7 +46,7 @@ def run_demucs(audio_file, temp_dir, model_name):
         output_dir = os.path.join(temp_dir, model_name)
         os.makedirs(output_dir, exist_ok=True)
 
-        # Запуск Demucs с указанным устройством
+        # Запуск Demucs для извлечения только вокала
         demucs.separate.main([
             "--float32",
             "--two-stems", "vocals",
@@ -70,7 +70,7 @@ def run_demucs(audio_file, temp_dir, model_name):
         return None
 
 def merge_audio_and_video(video_file, audio_file, output_file):
-    """Объединение видео и аудио с помощью FFmpeg"""
+    """Объединение видео и вокала с помощью FFmpeg"""
     try:
         video_in = ffmpeg.input(video_file)
         audio_in = ffmpeg.input(audio_file)

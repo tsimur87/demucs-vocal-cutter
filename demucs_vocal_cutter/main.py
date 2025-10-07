@@ -3,6 +3,7 @@ import sys
 import logging
 import threading
 import argparse
+import shutil
 from demucs_vocal_cutter import config
 from demucs_vocal_cutter.downloader import detect_platform, get_available_video_qualities, download_audio, start_video_download, get_video_title
 from demucs_vocal_cutter.audio_processor import convert_audio_to_wav, run_demucs, merge_audio_and_video
@@ -14,7 +15,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Извлечение вокала из видео/аудио")
     parser.add_argument("--url", help="URL видео")
     parser.add_argument("--file", help="Путь к локальному файлу")
-    parser.add_argument("--model", default="htdemucs", choices=["htdemucs", "htdemucs_ft", "htdemucs_6s"], help="Модель Demucs (htdemucs: быстрее, htdemucs_ft: лучшее качество, htdemucs_6s: 6 источников)")
+    parser.add_argument("--model", default="htdemucs", choices=["htdemucs", "htdemucs_ft", "htdemucs_6s", "hdemucs_mmi", "mdx", "mdx_extra", "mdx_q", "mdx_extra_q"], help="Модель Demucs (htdemucs: быстрее, mdx_extra: лучшее качество)")
     parser.add_argument("--quality", default=None, help="Качество видео")
     return parser.parse_args()
 
